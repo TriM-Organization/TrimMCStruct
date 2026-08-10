@@ -1,5 +1,12 @@
 """
 Operating the Minecraft structures.
+
+本文件中的核心类（Block, MatrixStructure）及 NBT 转换函数最初来源于
+原库 mcstructure (https://github.com/phoenixR-codes/mcstructure)，
+作者 The-phoenixR，遵循 MIT 协议（见 LICENSES/LICENSE(mcstructure).md）。
+
+后经 TriM-Organization 开发者（金羿/Eilles Wan, 诸葛亮与八卦阵/bgArray）改编与扩展。
+当前项目遵循 Apache 2.0 协议（见 LICENSE.md）。
 """
 
 from __future__ import annotations
@@ -13,8 +20,6 @@ from typing import Any, BinaryIO, Callable, Optional, Tuple, Union, Dict, AnyStr
 import numpy as np
 from numpy.typing import NDArray
 import nbtlib
-
-
 
 
 Coordinate = Tuple[int, int, int]
@@ -43,18 +48,17 @@ def nbtag_into_pyobj(tag_obj: nbtlib.Base) -> Any:
             res.append(value)
         return res
 
-    elif isinstance(tag_obj, (nbtlib.Double,nbtlib.Float)):
+    elif isinstance(tag_obj, (nbtlib.Double, nbtlib.Float)):
         return float(tag_obj)
-    
-    elif isinstance(tag_obj,(nbtlib.Byte)):
+
+    elif isinstance(tag_obj, (nbtlib.Byte)):
         return bool(tag_obj)
 
-    elif isinstance(tag_obj,nbtlib.NumericInteger):
+    elif isinstance(tag_obj, nbtlib.NumericInteger):
         return int(tag_obj)
-    
-    elif isinstance(tag_obj,(nbtlib.String)):
+
+    elif isinstance(tag_obj, (nbtlib.String)):
         return str(tag_obj)
-    
 
     return tag_obj
 
@@ -246,7 +250,8 @@ class Block:
         self,
         extra_data: dict[str, Union[int, str, bool]],
     ) -> None:
-        self.extra_data.update(extra_data)
+        if isinstance(extra_data, dict):
+            self.extra_data.update(extra_data)
 
     def dictionarify(self, *, with_states: bool = True) -> Dict[str, Any]:
         result = {
@@ -320,6 +325,9 @@ class Block:
 
         return False
 
+    def __hash__(self) -> int:
+        return hash((self.namespace, self.base_name, tuple(sorted(self.states.items())), tuple(sorted(self.extra_data.items()))))
+
     def copy(self) -> Block:
         return Block(
             namespace=self.namespace,
@@ -333,8 +341,6 @@ class Block:
         another_self = self.copy()
         another_self.extra_data = {}
         return another_self
-
-
 
 
 class MatrixStructure:
@@ -352,58 +358,46 @@ class MatrixStructure:
 
     def __init__(
         self,
-        default_block: Optional[Block] = None,
+        size: tuple[int, int, int],
+        fill: Optional[Block] = None,
         compability_version: int = COMPABILITY_VERSION,
     ):
         """
         Parameters
         ----------
+        size
+            The size of the structure.
 
-        default_block
-            What is the default block for the
+        fill
+            Fill the structure with this block at
             creation of a new structure object.
 
+            However, extra datas of blocks cannot be filled.
+
             If this is set to ``None`` the structure
-            then the default will be "Structure Void"
+            is filled with "Structure Void" blocks.
+
+            "None" is used as default.
         """
 
         self.structure_indecis: NDArray[np.intc]
 
+        self._size = size
         self._palette: List[Block] = []
         self._special_blocks: Dict[int, Dict] = {}
 
+        if fill is None:
+            self.structure_indecis = np.full(size, nbtlib.Int(-1), dtype=np.intc)
+
+        else:
+            self.structure_indecis = np.zeros(size, dtype=np.intc)
+            self._palette.append(fill)
+
         self.compability_version = compability_version
 
-    @classmethod
-    def loadf(cls, file_path: AnyStr):
-        """
-        Load an MatrixStructure file.
-
-        Parameters
-        ----------
-        file_path
-            File path to open.
-        """
-        pass
-
-    @classmethod
-    def load(cls, file_io: BinaryIO):
-        """
-        Load an MatrixStructure file via BinaryIO.
-
-        Parameters
-        ----------
-        file_io
-            File object to read.
-        """
-        pass
-
     @property
-    def size(self) -> Coordinate:
-
-        # TODO
-
-        return 0,0,0
+    def size(self) -> tuple[int, int, int]:
+        return self._size
 
     def __repr__(self) -> str:
         return repr(self._get_str_array())
@@ -434,68 +428,30 @@ class MatrixStructure:
         )
         return vec(arr)
 
-    def nbtfilize(
-        self,
-    ) -> nbtlib.File:
-        return nbtlib.File(
-            dict(
-                format_version=nbtlib.Int(1),
-                size=pyobj_into_nbttag(self.size),
-                structure=nbtlib.Compound(
-                    block_indices=nbtlib.List(
-                        [
-                            pyobj_into_nbttag(
-                                self.structure_indecis.flatten(),
-                            ),
-                            nbtlib.List(
-                                list(
-                                    repeat(nbtlib.Int(-1), self.structure_indecis.size),
-                                ),
-                            ),
-                        ],
-                    ),
-                    entities=nbtlib.List([]),
-                    palette=nbtlib.Compound(
-                        default=nbtlib.Compound(
-                            block_palette=nbtlib.List(
-                                [
-                                    pyobj_into_nbttag(block.dictionarify())
-                                    for block in self._palette
-                                ],
-                            ),
-                            block_position_data=pyobj_into_nbttag(
-                                self._special_blocks, sort_=lambda a: a[0]
-                            ),
-                        )
-                    ),
-                ),
-                structure_world_origin=pyobj_into_nbttag((0, 0, 0)),
-            ),
-            gzipped=False,
-            byteorder="little",
-        )
-
-    def dumpf(self, file_path: AnyStr) -> None:
+    def _add_block_to_palette(self, block: Optional[Block]) -> int:
         """
-        Serialize the structure as a file.
+        Adds a block to the palette.
 
         Parameters
         ----------
-        file_path
-            File path to write to.
-        """
-        pass
+        block
+            The block to add. If this is set to ``None``
+            "Structure Void" will be used.
 
-    def dump(self, file_: BinaryIO) -> None:
+        Returns
+        -------
+        The position of the block in the palette. This is
+        ``-1`` when ``None`` is used as ``block``.
         """
-        Serialize the structure as a ``mcstructure`` file.
+        if block is None:
+            return -1
 
-        Parameters
-        ----------
-        file
-            File object to write to.
-        """
-        pass
+        same_block = block.clear_extra_data()
+        if same_block in self._palette:
+            return self._palette.index(same_block)
+
+        self._palette.append(same_block)
+        return len(self._palette) - 1
 
     def mirror(self, axis: str) -> MatrixStructure:
         """
@@ -550,7 +506,9 @@ class MatrixStructure:
         block = self._palette[self.structure_indecis[x, y, z]].copy()
         block_index = x * self.size[2] * self.size[1] + y * self.size[2] + z
         if block_index in self._special_blocks.keys():
-            block.add_extra_data(self._special_blocks[block_index])
+            extra_data = self._special_blocks[block_index]
+            if isinstance(extra_data, dict):
+                block.extra_data.update(extra_data)
         return block
 
     def get_structure(self) -> NDArray[Any]:
@@ -596,6 +554,16 @@ class MatrixStructure:
             The block to place. If this is set to ``None``
             "Structure Void" blocks will be used.
         """
+        x, y, z = coordinate
+
+        ident = self._add_block_to_palette(block)
+
+        self.structure_indecis[x, y, z] = ident
+        if block:
+            if block.extra_data:
+                self._special_blocks[
+                    x * self.size[2] * self.size[1] + y * self.size[2] + z
+                ] = block.extra_data
         return self
 
     def fill_blocks(
@@ -623,4 +591,42 @@ class MatrixStructure:
             The block to place. If this is set to ``None``
             "STructure Void" blocks will be used to fill.
         """
+        fx, fy, fz = from_coordinate
+        tx, ty, tz = to_coordinate
+
+        ident = self._add_block_to_palette(block)
+
+        self.structure_indecis[fx : tx + 1, fy : ty + 1, fz : tz + 1] = np.array(
+            [
+                [
+                    [ident for k in range(abs(fz - tz) + 1)]
+                    for j in range(abs(fy - ty) + 1)
+                ]
+                for i in range(abs(fx - tx) + 1)
+            ],
+            dtype=np.intc,
+        ).reshape([abs(i) + 1 for i in (fx - tx, fy - ty, fz - tz)])
+
+        if block:
+            if block.extra_data:
+                self._special_blocks.update(
+                    dict(
+                        zip(
+                            [
+                                (x * self.size[2] * self.size[1] + y * self.size[2] + z)
+                                for x in range(fx, tx + 1)
+                                for y in range(fy, ty + 1)
+                                for z in range(fz, tz + 1)
+                            ],
+                            [
+                                block.extra_data
+                                for i in range(
+                                    (abs(fx - tx) + 1)
+                                    * (abs(fy - ty) + 1)
+                                    * (abs(fz - tz) + 1)
+                                )
+                            ],
+                        )
+                    )
+                )
         return self

@@ -28,14 +28,14 @@
 [![GitHub Repo stars](https://img.shields.io/github/stars/TriM-Organization/TrimMCStruct?color=white&logo=GitHub&style=plastic)](https://github.com/TriM-Organization/TrimMCStruct/stargazers)
 [![GitHub Repo Forks](https://img.shields.io/github/forks/TriM-Organization/TrimMCStruct?color=white&logo=GitHub&style=plastic)](https://github.com/TriM-Organization/TrimMCStruct/forks)
 
-*在此项目中（且更官方地是在“大一统更新”("Better Together Update")之后）专有名词《我的世界》("Minecraft")所指代的均为基岩版("Bedrock Edition")。*
+*在此项目中（且更官方地是在"大一统更新"("Better Together Update")之后）专有名词《我的世界》("Minecraft")所指代的均为基岩版("Bedrock Edition")。*
 
 _此项目中的所有特性也是仅仅针对基岩版的。_
 
 > **请注意**
 > 此项目目前仍属于 BETA 版本，因此很多的特性可能无法实现。
 
-此库可以让您以代码实现对 *《我的世界》* 结构文件的创建(create)与编辑(edit)。
+此库采用**插件式架构**，让您以代码实现对 *《我的世界》* 结构文件的创建(create)与编辑(edit)。
 您能够凭此而将您自己的结构存储为 `.mcstructure` 文件，因而可以使之用于行为包中，或者发展出更优秀的用途。
 
 当然，通过此库您也可以通过此库来读取(read)这些结构文件。
@@ -54,40 +54,73 @@ pip install TrimMCStruct
 基础用法
 -----------
 
-1.	写入结构文件
+1.	加载并编辑结构文件
 
 	```python
 	# 导入库
-	from TrimMCStruct import Block, Structure
+	from TrimMCStruct import StructManager, Block
 
-	# 实例化对象 Structure
-	struct = Structure(
-		(7, 7, 7),  # 声明结构大小
-		Block("minecraft:wool", color = "red")	# 预填充方块
-	)
+	# 初始化管理器
+	manager = StructManager()
 
-	# 设定方块
-	(struct
-		.set_block((1, 1, 1), Block("minecraft","grass"))
-		.set_block((2, 2, 2), Block("minecraft","grass"))
-		.set_block((3, 3, 3), Block("minecraft","grass"))
-		.set_block((4, 4, 4), Block("minecraft","grass"))
-		.set_block((5, 5, 5), Block("minecraft","grass"))
-		.set_block((6, 6, 6), Block("minecraft","grass"))
-	)
+	# 加载结构（自动检测格式）
+	struct = manager.load("input.mcstructure")
 
-	# 写入文件
-	with open("something.mcstructure", "wb") as f:
-		struct.dump(f)
+	# 查看结构信息
+	print("Size:", struct.size)
+	print("Block at (0,0,0):", struct.get_block((0, 0, 0)))
 
+	# 编辑结构
+	struct.set_block((0, 0, 0), Block.from_identifier("minecraft:diamond_block"))
+	struct.fill_blocks((1, 1, 1), (3, 3, 3), Block.from_identifier("minecraft:iron_block"))
+
+	# 镜像/旋转
+	struct.mirror("X")    # 沿 X 轴翻转
+	struct.rotate(90)     # 旋转 90 度
+
+	# 保存（自动检测格式）
+	manager.save(struct, "output.mcstructure")
 	```
 
-2.	读取结构文件
+2.	创建新结构
 
 	```python
-	with open("something.mcstructure", "rb") as f:
-		struct = Structure.load(f)
+	from TrimMCStruct import MatrixStructure, Block
 
+	# 创建 7x7x7 的结构，默认填充空气
+	struct = MatrixStructure((7, 7, 7))
+
+	# 设定方块
+	struct.set_block((1, 1, 1), Block.from_identifier("minecraft:grass"))
+	struct.set_block((2, 2, 2), Block.from_identifier("minecraft:grass"))
+
+	# 批量填充
+	struct.fill_blocks((3, 3, 3), (5, 5, 5), Block.from_identifier("minecraft:stone"))
+
+	# 保存
+	manager = StructManager()
+	manager.save(struct, "something.mcstructure")
+	```
+
+3.	查看支持的格式
+
+	```python
+	from TrimMCStruct import StructManager
+
+	manager = StructManager()
+	print(manager.available_formats)
+	# 支持的格式:
+	# - mcstructure: ['.mcstructure']
+	# - schematic: ['.schematic']
+	# - bdx: ['.bdx']
+	# - schem: ['.schem']
+	# - ibi: ['.ibi']
+	# - nbt: ['.nbt']
+	# - litematic: ['.litematic']
+	# - dsb: ['.dsb']
+	# - cmd_txt: ['.txt'] (含命令方块)
+	# - txt: ['.txt'] (不含命令方块)
+	# - mcworld: ['.mcworld']
 	```
 
 --------------------------------------------
